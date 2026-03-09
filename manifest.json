@@ -1,0 +1,77 @@
+{
+  "manifest_version": 3,
+  "name": "PromptBridge",
+  "version": "1.2.0",
+  "description": "Export AI chat conversations as structured JSON and copy to clipboard.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "scripting", "clipboardWrite", "storage"],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*",
+    "https://meta.ai/*",
+    "https://www.meta.ai/*",
+    "https://chat.qwen.ai/*",
+    "https://qwenlm.ai/*",
+    "https://kimi.moonshot.cn/*",
+    "https://kimi.com/*",
+    "https://www.perplexity.ai/*",
+    "https://perplexity.ai/*",
+    "https://poe.com/*",
+    "https://chat.mistral.ai/*",
+    "https://chat.deepseek.com/*",
+    "https://deepseek.com/*",
+    "https://copilot.microsoft.com/*",
+    "https://you.com/*",
+    "https://grok.com/*",
+    "https://x.com/i/grok*",
+    "https://scira.ai/*"
+  ],
+  "action": {
+    "default_title": "PromptBridge",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://meta.ai/*",
+        "https://www.meta.ai/*",
+        "https://chat.qwen.ai/*",
+        "https://qwenlm.ai/*",
+        "https://kimi.moonshot.cn/*",
+        "https://kimi.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*",
+        "https://poe.com/*",
+        "https://chat.mistral.ai/*",
+        "https://chat.deepseek.com/*",
+        "https://deepseek.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://you.com/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok*",
+        "https://scira.ai/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

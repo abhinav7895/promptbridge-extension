@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptBridge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>PromptBridge – Export Chat Context</h1>
+
+      <div class="actions">
+        <button id="copy-all" type="button">Copy Chat as JSON</button>
+        <button id="copy-transfer" type="button">Copy Transfer Prompt + JSON</button>
+        <button id="copy-10" type="button">Copy Last 10 Messages</button>
+        <button id="copy-20" type="button">Copy Last 20 Messages</button>
+      </div>
+
+      <p id="status" class="status" aria-live="polite"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
