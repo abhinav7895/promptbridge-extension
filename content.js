@@ -1,7 +1,134 @@
+(() => {
 /**
  * Content script for PromptBridge.
  * Extracts user/assistant chat turns across multiple AI providers.
  */
+
+if (window.__PROMPTBRIDGE_CONTENT_READY__) {
+  return;
+}
+window.__PROMPTBRIDGE_CONTENT_READY__ = true;
+
+const fallbackCore = (() => {
+  const DOCUMENT_POSITION_FOLLOWING = 4;
+  const providerSelectors = {
+    chatgpt: {
+      user: [
+        "[data-message-author-role='user']",
+        "article[data-testid*='conversation-turn'][data-message-author-role='user']",
+      ],
+      assistant: [
+        "[data-message-author-role='assistant']",
+        "article[data-testid*='conversation-turn'][data-message-author-role='assistant']",
+      ],
+    },
+    gemini: {
+      user: ["user-query", "[data-test-id*='user-query']", "[data-testid*='user-query']"],
+      assistant: ["model-response", "[data-test-id*='model-response']", "[data-testid*='model-response']"],
+    },
+    claude: {
+      user: ["[data-testid*='user']", "[data-test-render-count][data-testid*='human']"],
+      assistant: ["[data-testid*='assistant']", "[data-testid*='claude']"],
+    },
+    meta: {
+      user: ["[data-testid*='user']", "[data-testid*='prompt']"],
+      assistant: ["[data-testid*='assistant']", "[data-testid*='response']"],
+    },
+    qwen: {
+      user: ["[data-role='user']", "[class*='user']"],
+      assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
+    },
+    kimi: {
+      user: ["[data-role='user']", "[class*='user']"],
+      assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='ai']"],
+    },
+    perplexity: {
+      user: ["[data-testid*='user']", "[class*='query']"],
+      assistant: ["[data-testid*='assistant']", "[class*='answer']"],
+    },
+    poe: {
+      user: ["[data-testid*='user']", "[class*='ChatMessage_user']"],
+      assistant: ["[data-testid*='bot']", "[class*='ChatMessage_bot']", "[class*='assistant']"],
+    },
+    mistral: {
+      user: ["[data-role='user']", "[class*='user']"],
+      assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
+    },
+    deepseek: {
+      user: ["[data-role='user']", "[class*='user']"],
+      assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
+    },
+    copilot: {
+      user: ["[data-testid*='user']", "[class*='user']"],
+      assistant: ["[data-testid*='assistant']", "[class*='assistant']"],
+    },
+    you: {
+      user: ["[data-testid*='user']", "[class*='user']"],
+      assistant: ["[data-testid*='assistant']", "[class*='answer']"],
+    },
+    grok: {
+      user: ["[data-testid*='user']", "[class*='user']"],
+      assistant: ["[data-testid*='assistant']", "[class*='grok']", "[class*='bot']"],
+    },
+    scira: {
+      user: ["[data-testid*='user']", "[class*='user']"],
+      assistant: ["[data-testid*='assistant']", "[class*='assistant']", "[class*='bot']"],
+    },
+  };
+
+  function detectPlatform(host) {
+    if (host === "chat.openai.com" || host === "chatgpt.com") return "chatgpt";
+    if (host === "gemini.google.com") return "gemini";
+    if (host === "claude.ai") return "claude";
+    if (host === "meta.ai" || host === "www.meta.ai") return "meta";
+    if (host === "chat.qwen.ai" || host === "qwenlm.ai") return "qwen";
+    if (host === "kimi.moonshot.cn" || host === "kimi.com") return "kimi";
+    if (host === "perplexity.ai" || host === "www.perplexity.ai") return "perplexity";
+    if (host === "poe.com") return "poe";
+    if (host === "chat.mistral.ai") return "mistral";
+    if (host === "chat.deepseek.com" || host === "deepseek.com") return "deepseek";
+    if (host === "copilot.microsoft.com") return "copilot";
+    if (host === "grok.com" || host === "x.com") return "grok";
+    if (host === "you.com") return "you";
+    if (host === "scira.ai") return "scira";
+    return "unknown";
+  }
+
+  function collectRows(queryAll, selectors) {
+    const rows = [];
+
+    selectors.user.forEach((selector) => {
+      Array.from(queryAll(selector)).forEach((node) => rows.push({ node, role: "user" }));
+    });
+    selectors.assistant.forEach((selector) => {
+      Array.from(queryAll(selector)).forEach((node) => rows.push({ node, role: "assistant" }));
+    });
+
+    const seenNodes = new Set();
+    const uniqueRows = rows.filter((row) => {
+      if (seenNodes.has(row.node)) return false;
+      seenNodes.add(row.node);
+      return true;
+    });
+
+    uniqueRows.sort((a, b) => {
+      if (a.node === b.node) return 0;
+      const position = a.node.compareDocumentPosition(b.node);
+      return position & DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+
+    return uniqueRows;
+  }
+
+  return {
+    PROVIDER_SELECTORS: providerSelectors,
+    collectRoleRows: collectRows,
+    detectPlatformFromHost: detectPlatform,
+  };
+})();
+
+const core = globalThis.PromptBridgeCore || fallbackCore;
+const { PROVIDER_SELECTORS, collectRoleRows, detectPlatformFromHost } = core;
 
 /**
  * Normalize extracted text by removing excessive blank lines and trimming.
@@ -304,24 +431,7 @@ function extractAttachments(messageEl) {
  * @returns {string}
  */
 function detectPlatform() {
-  const host = window.location.hostname;
-
-  if (host === "chat.openai.com" || host === "chatgpt.com") return "chatgpt";
-  if (host === "gemini.google.com") return "gemini";
-  if (host === "claude.ai") return "claude";
-  if (host === "meta.ai" || host === "www.meta.ai") return "meta";
-  if (host === "chat.qwen.ai" || host === "qwenlm.ai") return "qwen";
-  if (host === "kimi.moonshot.cn" || host === "kimi.com") return "kimi";
-  if (host === "perplexity.ai" || host === "www.perplexity.ai") return "perplexity";
-  if (host === "poe.com") return "poe";
-  if (host === "chat.mistral.ai") return "mistral";
-  if (host === "chat.deepseek.com" || host === "deepseek.com") return "deepseek";
-  if (host === "copilot.microsoft.com") return "copilot";
-  if (host === "grok.com" || host === "x.com") return "grok";
-  if (host === "you.com") return "you";
-  if (host === "scira.ai") return "scira";
-
-  return "unknown";
+  return detectPlatformFromHost(window.location.hostname);
 }
 
 /**
@@ -399,30 +509,7 @@ function inferRole(messageEl) {
  * }>}
  */
 function extractByRoleSelectors(selectors) {
-  /** @type {Array<{ node: Element, role: "user" | "assistant" }>} */
-  const rows = [];
-
-  for (const sel of selectors.user) {
-    document.querySelectorAll(sel).forEach((node) => rows.push({ node, role: "user" }));
-  }
-  for (const sel of selectors.assistant) {
-    document.querySelectorAll(sel).forEach((node) => rows.push({ node, role: "assistant" }));
-  }
-
-  // Deduplicate by DOM node identity.
-  const seenNodes = new Set();
-  const uniqueRows = rows.filter((row) => {
-    if (seenNodes.has(row.node)) return false;
-    seenNodes.add(row.node);
-    return true;
-  });
-
-  uniqueRows.sort((a, b) => {
-    if (a.node === b.node) return 0;
-    const position = a.node.compareDocumentPosition(b.node);
-    return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-  });
-
+  const uniqueRows = collectRoleRows((selector) => document.querySelectorAll(selector), selectors);
   const dedupe = new Set();
   const messages = [];
 
@@ -534,75 +621,6 @@ function extractGenericMessages() {
 }
 
 /**
- * Provider-specific selectors for better extraction reliability.
- * @type {Record<string, { user: string[], assistant: string[] }>}
- */
-const PROVIDER_SELECTORS = {
-  chatgpt: {
-    user: [
-      "[data-message-author-role='user']",
-      "article[data-testid*='conversation-turn'][data-message-author-role='user']",
-    ],
-    assistant: [
-      "[data-message-author-role='assistant']",
-      "article[data-testid*='conversation-turn'][data-message-author-role='assistant']",
-    ],
-  },
-  gemini: {
-    user: ["user-query", "[data-test-id*='user-query']", "[data-testid*='user-query']"],
-    assistant: ["model-response", "[data-test-id*='model-response']", "[data-testid*='model-response']"],
-  },
-  claude: {
-    user: ["[data-testid*='user']", "[data-test-render-count][data-testid*='human']"],
-    assistant: ["[data-testid*='assistant']", "[data-testid*='claude']"],
-  },
-  meta: {
-    user: ["[data-testid*='user']", "[data-testid*='prompt']"],
-    assistant: ["[data-testid*='assistant']", "[data-testid*='response']"],
-  },
-  qwen: {
-    user: ["[data-role='user']", "[class*='user']"],
-    assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
-  },
-  kimi: {
-    user: ["[data-role='user']", "[class*='user']"],
-    assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='ai']"],
-  },
-  perplexity: {
-    user: ["[data-testid*='user']", "[class*='query']"],
-    assistant: ["[data-testid*='assistant']", "[class*='answer']"],
-  },
-  poe: {
-    user: ["[data-testid*='user']", "[class*='ChatMessage_user']"],
-    assistant: ["[data-testid*='bot']", "[class*='ChatMessage_bot']", "[class*='assistant']"],
-  },
-  mistral: {
-    user: ["[data-role='user']", "[class*='user']"],
-    assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
-  },
-  deepseek: {
-    user: ["[data-role='user']", "[class*='user']"],
-    assistant: ["[data-role='assistant']", "[class*='assistant']", "[class*='bot']"],
-  },
-  copilot: {
-    user: ["[data-testid*='user']", "[class*='user']"],
-    assistant: ["[data-testid*='assistant']", "[class*='assistant']"],
-  },
-  you: {
-    user: ["[data-testid*='user']", "[class*='user']"],
-    assistant: ["[data-testid*='assistant']", "[class*='answer']"],
-  },
-  grok: {
-    user: ["[data-testid*='user']", "[class*='user']"],
-    assistant: ["[data-testid*='assistant']", "[class*='grok']", "[class*='bot']"],
-  },
-  scira: {
-    user: ["[data-testid*='user']", "[class*='user']"],
-    assistant: ["[data-testid*='assistant']", "[class*='assistant']", "[class*='bot']"],
-  },
-};
-
-/**
  * Extract messages for active platform.
  * @returns {{
  *   platform: string,
@@ -645,3 +663,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: false, error: error.message || "Extraction failed." });
   }
 });
+})();

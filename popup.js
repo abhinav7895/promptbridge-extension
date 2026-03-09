@@ -1,11 +1,30 @@
 /**
  * Popup controller for PromptBridge.
  * - Requests extraction from content script via background service worker.
- * - Builds structured JSON payload.
+ * - Builds structured payloads.
  * - Copies to clipboard.
  */
 
+const core = globalThis.PromptBridgeCore || null;
+const PROVIDER_DIRECTORY = core?.PROVIDER_DIRECTORY || [];
+const buildImportHelperText = core?.buildImportHelperText || null;
+const buildPayload = core?.buildPayload || null;
+const renderConversationExport = core?.renderConversationExport || null;
+
 const statusEl = document.getElementById("status");
+const compressEl = document.getElementById("compress-context");
+const targetProviderEl = document.getElementById("target-provider");
+const copyImportHelperIconEl = document.getElementById("copy-import-helper-icon");
+const formatEls = Array.from(document.querySelectorAll("input[name='output-format']"));
+const copyAllEl = document.getElementById("copy-all");
+const copy10El = document.getElementById("copy-10");
+const copy20El = document.getElementById("copy-20");
+const STORAGE_KEYS = {
+  outputFormat: "promptbridge.outputFormat",
+  compress: "promptbridge.compress",
+  targetProvider: "promptbridge.targetProvider",
+};
+let copyIconResetTimer = null;
 
 /**
  * Set a status message in popup.
@@ -13,6 +32,7 @@ const statusEl = document.getElementById("status");
  * @param {"success" | "error" | ""} type
  */
 function setStatus(message, type = "") {
+  if (!statusEl) return;
   statusEl.textContent = message;
   statusEl.className = `status ${type}`.trim();
 }
@@ -55,78 +75,77 @@ async function requestMessages(tabId) {
 }
 
 /**
- * Build final export payload.
- * @param {string} platform
- * @param {Array<{
- *   role: "user" | "assistant",
- *   content: string,
- *   attachments?: Array<{ type: "image" | "file", image_url?: string, file_name?: string, file_link?: string, mime_type?: string }>
- * }>} messages
- * @returns {{
- *   format: string,
- *   meta: { platform: string, exported_at: string, exporter: string, version: string },
- *   handoff: { objective: string, instruction: string, respond_to: string },
- *   messages: Array<{
- *     role: "user" | "assistant",
- *     content: string,
- *     attachments?: Array<{ type: "image" | "file", image_url?: string, file_name?: string, file_link?: string, mime_type?: string }>
- *   }>
- * }}
+ * Copy text to the clipboard.
+ * @param {string} value
  */
-function buildPayload(platform, messages) {
-  const lastUserMessage = [...messages].reverse().find((item) => item.role === "user");
-  const extensionVersion = chrome.runtime.getManifest().version || "1.0.0";
+async function copyText(value) {
+  await navigator.clipboard.writeText(value);
+}
 
-  return {
-    format: "promptbridge.chat.v1",
-    meta: {
-      platform,
-      exported_at: new Date().toISOString(),
-      exporter: "PromptBridge",
-      version: extensionVersion,
-    },
-    handoff: {
-      objective: "Continue this conversation naturally from prior context.",
-      instruction:
-        "Treat the messages array as the full conversation history. Do not summarize unless asked. Continue by replying to the final user intent.",
-      respond_to: lastUserMessage?.content || "Use the latest unresolved user request in messages.",
-    },
-    messages,
+function getSelectedFormat() {
+  return formatEls.find((item) => item.checked)?.value || "json";
+}
+
+async function persistPreferences() {
+  if (!compressEl || !targetProviderEl) return;
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.outputFormat]: getSelectedFormat(),
+    [STORAGE_KEYS.compress]: compressEl.checked,
+    [STORAGE_KEYS.targetProvider]: targetProviderEl.value,
+  });
+}
+
+async function hydratePreferences() {
+  if (!compressEl || !targetProviderEl) return;
+  const defaults = {
+    [STORAGE_KEYS.outputFormat]: "json",
+    [STORAGE_KEYS.compress]: false,
+    [STORAGE_KEYS.targetProvider]: "claude",
   };
+  const values = await chrome.storage.local.get(defaults);
+
+  formatEls.forEach((item) => {
+    item.checked = item.value === values[STORAGE_KEYS.outputFormat];
+  });
+  compressEl.checked = Boolean(values[STORAGE_KEYS.compress]);
+  targetProviderEl.value = values[STORAGE_KEYS.targetProvider];
 }
 
-/**
- * Copy given object as pretty JSON.
- * @param {object} data
- */
-async function copyJson(data) {
-  const json = JSON.stringify(data, null, 2);
-  await navigator.clipboard.writeText(json);
+function populateTargetProviders() {
+  if (!targetProviderEl) return;
+  const options = PROVIDER_DIRECTORY.map(
+    (provider) => `<option value="${provider.id}">${provider.label}</option>`
+  ).join("");
+  targetProviderEl.innerHTML = options;
 }
 
-/**
- * Copy an explicit handoff prompt with embedded JSON payload.
- * @param {object} data
- */
-async function copyTransferPrompt(data) {
-  const body = [
-    "Continue this conversation from the imported context below.",
-    "Use the messages as authoritative history.",
-    "Reply to the latest user request directly. Do not summarize unless asked.",
-    "",
-    JSON.stringify(data, null, 2),
-  ].join("\n");
+function showCopySuccessIcon() {
+  if (!copyImportHelperIconEl) return;
+  if (copyIconResetTimer) {
+    window.clearTimeout(copyIconResetTimer);
+  }
 
-  await navigator.clipboard.writeText(body);
+  copyImportHelperIconEl.classList.add("is-success");
+  copyIconResetTimer = window.setTimeout(() => {
+    copyImportHelperIconEl.classList.remove("is-success");
+    copyIconResetTimer = null;
+  }, 1500);
 }
 
 /**
  * Main export handler.
  * @param {number | null} limit
- * @param {"json" | "transfer"} mode
+ * @param {"export" | "import-helper"} mode
  */
-async function exportConversation(limit = null, mode = "json") {
+async function exportConversation(limit = null, mode = "export") {
   try {
+    if (!core || !buildPayload || !renderConversationExport || !buildImportHelperText) {
+      throw new Error("PromptBridge failed to initialize. Reload the extension and try again.");
+    }
+    if (!compressEl || !targetProviderEl) {
+      throw new Error("PromptBridge popup is missing required controls.");
+    }
+
     setStatus("Extracting messages...");
 
     const tab = await getActiveTab();
@@ -138,12 +157,25 @@ async function exportConversation(limit = null, mode = "json") {
     }
 
     const selected = typeof limit === "number" ? messages.slice(-limit) : messages;
-    const payload = buildPayload(platform, selected);
+    const payload = buildPayload(platform, selected, {
+      compress: compressEl.checked,
+      compressionOptions: { threshold: 12, recentCount: 8 },
+      extensionVersion: chrome.runtime.getManifest().version || "1.0.0",
+    });
 
-    if (mode === "transfer") {
-      await copyTransferPrompt(payload);
-    } else {
-      await copyJson(payload);
+    const text =
+      mode === "import-helper"
+        ? buildImportHelperText(payload, {
+            targetProvider: targetProviderEl.value,
+            outputFormat: getSelectedFormat(),
+          })
+        : renderConversationExport(payload, getSelectedFormat());
+
+    await copyText(text);
+    await persistPreferences();
+
+    if (mode === "import-helper") {
+      showCopySuccessIcon();
     }
 
     setStatus("Context copied to clipboard", "success");
@@ -152,18 +184,44 @@ async function exportConversation(limit = null, mode = "json") {
   }
 }
 
-document.getElementById("copy-all").addEventListener("click", () => {
-  void exportConversation(null);
-});
+function initializePopup() {
+  if (!core) {
+    setStatus("PromptBridge failed to initialize. Reload the extension.", "error");
+    return;
+  }
 
-document.getElementById("copy-transfer").addEventListener("click", () => {
-  void exportConversation(null, "transfer");
-});
+  populateTargetProviders();
+  void hydratePreferences();
 
-document.getElementById("copy-10").addEventListener("click", () => {
-  void exportConversation(10);
-});
+  formatEls.forEach((item) => {
+    item.addEventListener("change", () => {
+      void persistPreferences();
+    });
+  });
 
-document.getElementById("copy-20").addEventListener("click", () => {
-  void exportConversation(20);
-});
+  compressEl?.addEventListener("change", () => {
+    void persistPreferences();
+  });
+
+  targetProviderEl?.addEventListener("change", () => {
+    void persistPreferences();
+  });
+
+  copyAllEl?.addEventListener("click", () => {
+    void exportConversation(null);
+  });
+
+  copy10El?.addEventListener("click", () => {
+    void exportConversation(10);
+  });
+
+  copy20El?.addEventListener("click", () => {
+    void exportConversation(20);
+  });
+
+  copyImportHelperIconEl?.addEventListener("click", () => {
+    void exportConversation(null, "import-helper");
+  });
+}
+
+initializePopup();

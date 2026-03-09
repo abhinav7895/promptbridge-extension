@@ -65,7 +65,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
-        files: ["content.js"],
+        files: ["shared.js", "content.js"],
       });
     } catch (_error) {
       sendResponse({

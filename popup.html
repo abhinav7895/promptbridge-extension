@@ -8,18 +8,73 @@
   </head>
   <body>
     <main class="container">
-      <h1>PromptBridge – Export Chat Context</h1>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PromptBridge</p>
+          <h1>Export Chat Context</h1>
+        </div>
+        <p class="lede">Portable context in structured formats.</p>
+      </header>
 
-      <div class="actions">
-        <button id="copy-all" type="button">Copy Chat as JSON</button>
-        <button id="copy-transfer" type="button">Copy Transfer Prompt + JSON</button>
-        <button id="copy-10" type="button">Copy Last 10 Messages</button>
-        <button id="copy-20" type="button">Copy Last 20 Messages</button>
-      </div>
+      <section class="panel">
+        <h2>Output</h2>
+        <div class="format-switcher" role="radiogroup" aria-label="Output format">
+          <label class="format-option">
+            <input id="format-json" type="radio" name="output-format" value="json" checked />
+            <span>JSON</span>
+          </label>
+          <label class="format-option">
+            <input id="format-markdown" type="radio" name="output-format" value="markdown" />
+            <span>Markdown</span>
+          </label>
+          <label class="format-option">
+            <input id="format-prompt" type="radio" name="output-format" value="prompt" />
+            <span>Plain Prompt</span>
+          </label>
+        </div>
+
+        <label class="checkbox-row" for="compress-context">
+          <input id="compress-context" type="checkbox" />
+          <span>Compress older context for long chats</span>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Export</h2>
+        <div class="actions">
+          <button id="copy-all" type="button">Copy Full Chat</button>
+          <button id="copy-10" type="button">Copy Last 10 Messages</button>
+          <button id="copy-20" type="button">Copy Last 20 Messages</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Import Helper</h2>
+        <div class="field">
+          <label for="target-provider">Target provider</label>
+          <div class="field-inline">
+            <div class="select-wrap">
+              <select id="target-provider"></select>
+              <span class="select-icon" aria-hidden="true"></span>
+            </div>
+            <button
+              id="copy-import-helper-icon"
+              class="icon-button"
+              type="button"
+              aria-label="Copy import helper"
+              title="Copy import helper"
+            >
+              <span class="icon-copy" aria-hidden="true"></span>
+              <span class="icon-check" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </section>
 
       <p id="status" class="status" aria-live="polite"></p>
     </main>
 
+    <script src="shared.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

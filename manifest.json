@@ -70,7 +70,7 @@
         "https://x.com/i/grok*",
         "https://scira.ai/*"
       ],
-      "js": ["content.js"],
+      "js": ["shared.js", "content.js"],
       "run_at": "document_idle"
     }
   ]
